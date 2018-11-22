@@ -13,17 +13,11 @@ const server = net.createServer((client) => {
         let  dataJSON = JSON.parse(data);
         console.log(dataJSON);
         switch (dataJSON.action) {
-            case "getWorkers":
-                console.log(dataJSON.action);
-                let res = getWorkers();
-                console.log(res);
-                client.write(JSON.stringify(res));
+            case "getWorkers": get(client);
                 break;
-            case "add": addWorkers(dataJSON, dataJSON.x, client);
+            case "add": addWorkers(dataJSON.x, client);
                 break;
-            case "remove":
-                let message = removeWorker(dataJSON.pid, client);
-                client.write(JSON.stringify(message));
+            case "remove": remove(dataJSON.id, client);
                 break;
             default:
 
@@ -40,7 +34,7 @@ server.listen(port, () => {
 
 
 
-function addWorkers(data, x , client) {
+function addWorkers(x , client) {
     if(runWorker(x, client)){
         client.write(JSON.stringify({
             "action": "add",
@@ -52,12 +46,12 @@ function addWorkers(data, x , client) {
 }
 
 function runWorker(interval, client) {
-    if(isNaN(Number(interval)) || interval <= 0) {
+
+    if( isNaN(++interval) || interval <= 0) {
         client.write(JSON.stringify({ "action": "exit" }));
-        client.destroy();
         return false;
     }
-
+    --interval;
     let worker = {};
     const date = new Date();
     worker.id = Date.now();
@@ -71,56 +65,73 @@ function runWorker(interval, client) {
     worker.filename = pathToClient;
     worker.pid = myChildProcess.pid;
     workers.push(worker);
+
     return true;
 }
 
 
-function getWorkers() {
-    let res = [];
-    res.push({"action": "getWorkers"});
-    let work = [];
-    for (let i = 0; i < workers.length; i++) {
-        getNumbers(workers[i], (data) => {
-                work.push({
-                    "id": workers[i].id,
-                    "pid": workers[i].pid,
-                    "startedOn": workers[i].startedOn,
-                    "numbers": data
-                });
-        });
-    }
-    res.push({"workers": work})
-    return res;
+
+const get = async (client) => {
+    let res = await getWorkers();
+    client.write(JSON.stringify(res));
 }
 
-function getNumbers(worker, cb) {
-    fs.readFile(worker.filename, (error, data) => {
-        if (!error) {
-            cb(data);
+async function getWorkers() {
+    return new Promise(async (resolve) => {
+        let work = [];
+        for (let i = 0; i < workers.length; i++) {
+            let numbers = await getNumbers(workers[i]);
+            work.push({
+                "id" : workers[i].id,
+                "pid": workers[i].pid,
+                "startedOn" : workers[i].startedOn,
+                "numbers" : numbers,
+            });
         }
-        cb("readFile error");
-    });
+        console.log(work);
+        resolve({"action": "getWorkers", "workers": work});
+    })
 }
 
-function removeWorker(pid, client) {
-    let message;
-    let index =-1;
-    if(parseInt(pid) ||( index = workers.findIndex(worker => worker.pid === pid))=== -1) {
-        client.write(JSON.stringify({ "action": "exit" }));
-        client.destroy();
-        return false;
-    }
-    getNumbers(workers[index], (data) => {
+function getNumbers(worker) {
+    return new Promise((resolve, reject) => {
+        fs.readFile(worker.filename, (error, data) => {
+            if (!error) {
+                resolve(JSON.parse(data));
+            }
+            else {
+                reject("Not found content");
+            }
+        })
+    })
+}
+
+
+const remove = async (id, client) => {
+    let res = await removeWorker(id);
+    client.write(JSON.stringify(res));
+}
+
+async function removeWorker(id) {
+    return new Promise(async (resolve) => {
+        let message;
+        let i = -1;
+        if (isNaN(++id) || (i = workers.findIndex(worker => worker.id === id)) === -1) {
+            console.log(i);
+            message = {"action": "exit"};
+            return message;
+        }
+        process.kill(workers[i].pid);
+        let numbers = await getNumbers(workers[i]);
         message = {
             "action": "remove",
-            "id": workers[index].pid,
-            "date": workers[index].startedOn,
-            "numbers": data
+            "id": workers[i].id,
+            "date": workers[i].startedOn,
+            "numbers": numbers
         };
-        process.kill(workers[index].pid);
-        fs.unlink(workers[index].filename, () => {
+        fs.unlink(workers[i].filename, () => {
         });
-        workers.splice(index, 1);
-        return message;
-    });
+        workers.splice(i, 1);
+        resolve(message);
+    })
 }

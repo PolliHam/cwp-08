@@ -1,13 +1,16 @@
-const fs = require("fs");
-let lock = 15;
+const fs = require('fs');
 
-function writeToFile(path, x){
-    setInterval(function() {
-        if(lock!==0){
-            fs.appendFile(path, Math.floor(Math.random()*15+12)+",  ", ()=>{});
-            lock--;
-        }
-    }, x);
-}
+let file = process.argv[2];
+let sec = Math.round(process.argv[3]);
+fs.writeFile(file, `${rand()}`, (err) => {
+    if(err){
+        console.log(err);
+        return;
+    }
+    setInterval(
+        () => {fs.appendFile(file, `, ${rand()}`, ()=>{});},
+        sec*1000
+    );
+});
 
-writeToFile(process.argv[2], process.argv[3]);
+function rand() { return Math.round(Math.random() * 1000); }
